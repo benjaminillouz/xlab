@@ -79,4 +79,4 @@ https://app.applications-cemedis.fr/bonsdecommandesxlab?id=...&centre=...&pratic
 
 ## Charte graphique
 
-Couleur principale : `#004B63` (CEMEDIS)
+Couleur principale : `#004B63` (CEMEDIS) 

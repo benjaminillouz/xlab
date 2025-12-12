@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image, pdf } from '@react-pdf/renderer';
+import QRCode from 'qrcode';
 
 const PRIMARY_COLOR = '#004B63';
 
@@ -35,6 +36,10 @@ const styles = StyleSheet.create({
   },
   qrSection: {
     alignItems: 'center',
+  },
+  qrCode: {
+    width: 80,
+    height: 80,
   },
   infoSection: {
     flexDirection: 'row',
@@ -250,7 +255,7 @@ const CategoryTable = ({ categoryKey, orders }) => {
 };
 
 // Document PDF principal
-const OrderPDFDocument = ({ formData, orders }) => {
+const OrderPDFDocument = ({ formData, orders, qrCodeDataUrl }) => {
   const hasOrders = Object.values(orders).some(list => list.length > 0);
   const activeCategories = Object.entries(orders)
     .filter(([_, list]) => list.length > 0)
@@ -261,9 +266,14 @@ const OrderPDFDocument = ({ formData, orders }) => {
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>BON DE COMMANDE</Text>
-            <Text style={styles.idbc}>IDBC: {formData.idCommande || 'N/A'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {qrCodeDataUrl && (
+              <Image src={qrCodeDataUrl} style={styles.qrCode} />
+            )}
+            <View style={{ marginLeft: qrCodeDataUrl ? 15 : 0 }}>
+              <Text style={styles.headerTitle}>BON DE COMMANDE</Text>
+              <Text style={styles.idbc}>IDBC: {formData.idCommande || 'N/A'}</Text>
+            </View>
           </View>
           <View style={styles.qrSection}>
             <Text style={{ fontSize: 8, color: '#666' }}>Réf: {formData.idCommande || 'N/A'}</Text>
@@ -352,9 +362,34 @@ const OrderPDFDocument = ({ formData, orders }) => {
   );
 };
 
+// Fonction pour générer le QR code en data URL
+const generateQRCode = async (text) => {
+  if (!text) return null;
+  try {
+    return await QRCode.toDataURL(text, {
+      width: 200,
+      margin: 1,
+      color: {
+        dark: PRIMARY_COLOR,
+        light: '#ffffff'
+      }
+    });
+  } catch (err) {
+    console.error('Erreur génération QR code:', err);
+    return null;
+  }
+};
+
 // Fonction pour générer le PDF en base64 (avec data URI pour faciliter le décodage)
 export const generatePDFBase64 = async (formData, orders) => {
-  const blob = await pdf(<OrderPDFDocument formData={formData} orders={orders} />).toBlob();
+  // 1. Générer le QR code
+  const qrCodeDataUrl = await generateQRCode(formData.idCommande || 'N/A');
+
+  // 2. Générer le PDF avec le QR code
+  const blob = await pdf(
+    <OrderPDFDocument formData={formData} orders={orders} qrCodeDataUrl={qrCodeDataUrl} />
+  ).toBlob();
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {

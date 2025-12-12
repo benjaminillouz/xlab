@@ -749,23 +749,6 @@ export default function DentalOrderForm() {
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-center text-slate-800">Informations</h2>
 
-            {/* Debug URL params (à supprimer en prod) */}
-            {urlParams.idCommande && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
-                <p className="font-semibold text-blue-800 mb-1">Paramètres URL détectés :</p>
-                <ul className="text-blue-700 space-y-0.5">
-                  {urlParams.idCommande && <li>ID_commande: {urlParams.idCommande}</li>}
-                  {urlParams.idPraticien && <li>ID_praticien: {urlParams.idPraticien}</li>}
-                  {urlParams.idCentre && <li>ID_centre: {urlParams.idCentre}</li>}
-                  {urlParams.idPatient && <li>Patient_id: {urlParams.idPatient}</li>}
-                  {urlParams.nomPraticien && <li>Praticien_nom: {urlParams.nomPraticien}</li>}
-                  {urlParams.nomCentre && <li>Centre_nom: {urlParams.nomCentre}</li>}
-                  {urlParams.nomPatient && <li>Patient_nom: {urlParams.nomPatient}</li>}
-                  {urlParams.prenomPatient && <li>Patient_prenom: {urlParams.prenomPatient}</li>}
-                </ul>
-              </div>
-            )}
-
             <div className="grid md:grid-cols-2 gap-4">
               {/* Praticien */}
               <div className="bg-white rounded-xl p-4 border">

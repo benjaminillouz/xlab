@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { generatePDFBase64 } from './OrderPDF';
 
 // ===========================================
 // CONFIGURATION
@@ -6,6 +7,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 
 const LOGO_URL = "https://static.wixstatic.com/media/b07e07_99b2a9f75e874f24a4597db0afd55aac~mv2.jpeg";
 const PRIMARY_COLOR = '#004B63';
+const WEBHOOK_URL = 'https://n8n.cemedis.app/webhook/98340741-b4b3-40d8-bfad-d93c40a58b95';
 
 // ===========================================
 // UTILITAIRES
@@ -525,6 +527,8 @@ export default function DentalOrderForm() {
   const [step, setStep] = useState(1);
   const [nextId, setNextId] = useState(1);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   // Paramètres URL
   const urlParams = useMemo(() => getUrlParams(), []);
@@ -642,65 +646,154 @@ export default function DentalOrderForm() {
   };
 
   // Fonction de soumission
-  const handleSubmit = () => {
-    // Construire les données pour l'URL
-    
-    // PC = Prothèses Conjointes (dents sélectionnées)
-    const pcDents = orders.CONJOINTE
-      .flatMap(o => o.data.dents || [])
-      .sort((a, b) => a - b)
-      .join(',');
-    
-    // PA Max = Prothèses Adjointes Maxillaire
-    const paMax = orders.ADJOINTE
-      .filter(o => o.product.arcade === 'maxillaire')
-      .map(o => o.product.code)
-      .join(',');
-    
-    // PA Mand = Prothèses Adjointes Mandibulaire
-    const paMand = orders.ADJOINTE
-      .filter(o => o.product.arcade === 'mandibulaire')
-      .map(o => o.product.code)
-      .join(',');
-    
-    // Other = Implantologie + Orthodontie
-    const otherProd = [
-      ...orders.IMPLANTOLOGIE.map(o => `${o.product.code}:${(o.data.dents || []).join('-')}`),
-      ...orders.ORTHODONTIE.map(o => o.product.code)
-    ].join(',');
-    
-    // Type de travail (codes des catégories utilisées)
-    const wtype = Object.entries(orders)
-      .filter(([_, list]) => list.length > 0)
-      .map(([cat]) => cat.substring(0, 3))
-      .join(',');
-    
-    // Prothèses immédiates (extractions)
-    const extrac = formData.travailARefaire ? 'oui' : 'non';
-    
-    // Construire l'URL
-    const baseUrl = 'https://app.applications-cemedis.fr/bonsdecommandesxlab';
-    const params = new URLSearchParams({
-      id: formData.idCommande || '',
-      centre: formData.centre || '',
-      praticien: formData.praticien || '',
-      datec: formData.dateCommande || '',
-      datel: formData.dateLivraison || '',
-      patientnom: formData.nomPatient || '',
-      patientprenom: formData.prenomPatient || '',
-      wtype: wtype,
-      pc: pcDents,
-      pamax: paMax,
-      pamand: paMand,
-      other: otherProd,
-      comment: formData.message || '',
-      extrac: extrac
-    });
-    
-    const redirectUrl = `${baseUrl}?${params.toString()}`;
-    
-    // Redirection
-    window.location.href = redirectUrl;
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // 1. Générer le PDF en base64
+      const pdfBase64 = await generatePDFBase64(formData, orders);
+
+      // 2. Préparer les données complètes pour le webhook
+      const webhookData = {
+        // Identifiants
+        idCommande: formData.idCommande || '',
+        idPraticien: formData.idPraticien || '',
+        idCentre: formData.idCentre || '',
+        idPatient: formData.idPatient || '',
+
+        // Informations praticien/centre
+        praticien: formData.praticien || '',
+        centre: formData.centre || '',
+
+        // Informations patient
+        nomPatient: formData.nomPatient || '',
+        prenomPatient: formData.prenomPatient || '',
+
+        // Dates
+        dateCommande: formData.dateCommande || '',
+        dateLivraison: formData.dateLivraison || '',
+
+        // Options
+        travailARefaire: formData.travailARefaire,
+        empreinteNumerique: formData.empreinteNumerique,
+        message: formData.message || '',
+
+        // Produits par catégorie (données complètes)
+        produits: {
+          CONJOINTE: orders.CONJOINTE.map(o => ({
+            id: o.id,
+            code: o.product.code,
+            nom: o.product.nom,
+            dents: o.data.dents || [],
+            teinte: o.data.teinte || ''
+          })),
+          ADJOINTE: orders.ADJOINTE.map(o => ({
+            id: o.id,
+            code: o.product.code,
+            nom: o.product.nom,
+            arcade: o.product.arcade,
+            dents: o.data.dents || [],
+            teinte: o.data.teinte || ''
+          })),
+          IMPLANTOLOGIE: orders.IMPLANTOLOGIE.map(o => ({
+            id: o.id,
+            code: o.product.code,
+            nom: o.product.nom,
+            dents: o.data.dents || [],
+            teinte: o.data.teinte || ''
+          })),
+          ORTHODONTIE: orders.ORTHODONTIE.map(o => ({
+            id: o.id,
+            code: o.product.code,
+            nom: o.product.nom,
+            arcade: o.product.arcade
+          }))
+        },
+
+        // Résumé
+        totalActes: Object.values(orders).reduce((sum, arr) => sum + arr.length, 0),
+        categoriesActives: Object.entries(orders)
+          .filter(([_, list]) => list.length > 0)
+          .map(([cat]) => cat),
+
+        // PDF en base64
+        pdfBase64: pdfBase64,
+
+        // Métadonnées
+        timestamp: new Date().toISOString(),
+        source: 'xlab-order-form'
+      };
+
+      // 3. Envoyer au webhook
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur serveur: ${response.status}`);
+      }
+
+      // 4. Construire l'URL de redirection vers CEMEDIS
+      const pcDents = orders.CONJOINTE
+        .flatMap(o => o.data.dents || [])
+        .sort((a, b) => a - b)
+        .join(',');
+
+      const paMax = orders.ADJOINTE
+        .filter(o => o.product.arcade === 'maxillaire')
+        .map(o => o.product.code)
+        .join(',');
+
+      const paMand = orders.ADJOINTE
+        .filter(o => o.product.arcade === 'mandibulaire')
+        .map(o => o.product.code)
+        .join(',');
+
+      const otherProd = [
+        ...orders.IMPLANTOLOGIE.map(o => `${o.product.code}:${(o.data.dents || []).join('-')}`),
+        ...orders.ORTHODONTIE.map(o => o.product.code)
+      ].join(',');
+
+      const wtype = Object.entries(orders)
+        .filter(([_, list]) => list.length > 0)
+        .map(([cat]) => cat.substring(0, 3))
+        .join(',');
+
+      const extrac = formData.travailARefaire ? 'oui' : 'non';
+
+      const baseUrl = 'https://app.applications-cemedis.fr/bonsdecommandesxlab';
+      const params = new URLSearchParams({
+        id: formData.idCommande || '',
+        centre: formData.centre || '',
+        praticien: formData.praticien || '',
+        datec: formData.dateCommande || '',
+        datel: formData.dateLivraison || '',
+        patientnom: formData.nomPatient || '',
+        patientprenom: formData.prenomPatient || '',
+        wtype: wtype,
+        pc: pcDents,
+        pamax: paMax,
+        pamand: paMand,
+        other: otherProd,
+        comment: formData.message || '',
+        extrac: extrac
+      });
+
+      const redirectUrl = `${baseUrl}?${params.toString()}`;
+
+      // 5. Redirection
+      window.location.href = redirectUrl;
+
+    } catch (error) {
+      console.error('Erreur lors de la soumission:', error);
+      setSubmitError(`Une erreur est survenue: ${error.message}`);
+      setIsSubmitting(false);
+    }
   };
 
   // ===========================================
@@ -1008,18 +1101,36 @@ export default function DentalOrderForm() {
                     </span>
                   </div>
 
+                  {submitError && (
+                    <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                      {submitError}
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleSubmit}
-                    className="w-full py-2 text-white font-bold rounded-lg"
+                    disabled={isSubmitting}
+                    className="w-full py-2 text-white font-bold rounded-lg disabled:opacity-70 flex items-center justify-center gap-2"
                     style={{ backgroundColor: PRIMARY_COLOR }}
                   >
-                    ✓ Valider la commande
+                    {isSubmitting ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      '✓ Valider la commande'
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={() => setStep(2)}
-                    className="w-full mt-2 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg"
+                    disabled={isSubmitting}
+                    className="w-full mt-2 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg disabled:opacity-50"
                   >
                     Modifier
                   </button>

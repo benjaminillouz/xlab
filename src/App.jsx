@@ -856,6 +856,15 @@ export default function DentalOrderForm() {
                   </button>
                 </div>
               </div>
+
+              {/* Notice délais */}
+              <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="text-xs text-amber-800 space-y-1">
+                  <span className="block">⏱️ Délais de <strong>7 jours minimum</strong> pour un cas simple</span>
+                  <span className="block">⏱️ Délais de <strong>11 jours</strong> pour les cas combinés</span>
+                  <span className="block">⏱️ Délais de <strong>12 jours</strong> pour les cas implantaires</span>
+                </p>
+              </div>
             </div>
 
             <div className="flex justify-end">

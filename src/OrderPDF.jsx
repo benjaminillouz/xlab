@@ -352,14 +352,14 @@ const OrderPDFDocument = ({ formData, orders }) => {
   );
 };
 
-// Fonction pour générer le PDF en base64
+// Fonction pour générer le PDF en base64 (avec data URI pour faciliter le décodage)
 export const generatePDFBase64 = async (formData, orders) => {
   const blob = await pdf(<OrderPDFDocument formData={formData} orders={orders} />).toBlob();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64 = reader.result.split(',')[1];
-      resolve(base64);
+      // Retourne le data URI complet: data:application/pdf;base64,XXXXX
+      resolve(reader.result);
     };
     reader.onerror = reject;
     reader.readAsDataURL(blob);

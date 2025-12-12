@@ -529,6 +529,7 @@ export default function DentalOrderForm() {
   const [validationErrors, setValidationErrors] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
 
   // Paramètres URL
   const urlParams = useMemo(() => getUrlParams(), []);
@@ -738,56 +739,21 @@ export default function DentalOrderForm() {
         throw new Error(`Erreur serveur: ${response.status}`);
       }
 
-      // 4. Construire l'URL de redirection vers CEMEDIS
-      const pcDents = orders.CONJOINTE
-        .flatMap(o => o.data.dents || [])
-        .sort((a, b) => a - b)
-        .join(',');
+      // 4. Convertir le data URI en blob URL pour affichage
+      const base64Data = pdfBase64.split(',')[1];
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
 
-      const paMax = orders.ADJOINTE
-        .filter(o => o.product.arcade === 'maxillaire')
-        .map(o => o.product.code)
-        .join(',');
-
-      const paMand = orders.ADJOINTE
-        .filter(o => o.product.arcade === 'mandibulaire')
-        .map(o => o.product.code)
-        .join(',');
-
-      const otherProd = [
-        ...orders.IMPLANTOLOGIE.map(o => `${o.product.code}:${(o.data.dents || []).join('-')}`),
-        ...orders.ORTHODONTIE.map(o => o.product.code)
-      ].join(',');
-
-      const wtype = Object.entries(orders)
-        .filter(([_, list]) => list.length > 0)
-        .map(([cat]) => cat.substring(0, 3))
-        .join(',');
-
-      const extrac = formData.travailARefaire ? 'oui' : 'non';
-
-      const baseUrl = 'https://app.applications-cemedis.fr/bonsdecommandesxlab';
-      const params = new URLSearchParams({
-        id: formData.idCommande || '',
-        centre: formData.centre || '',
-        praticien: formData.praticien || '',
-        datec: formData.dateCommande || '',
-        datel: formData.dateLivraison || '',
-        patientnom: formData.nomPatient || '',
-        patientprenom: formData.prenomPatient || '',
-        wtype: wtype,
-        pc: pcDents,
-        pamax: paMax,
-        pamand: paMand,
-        other: otherProd,
-        comment: formData.message || '',
-        extrac: extrac
-      });
-
-      const redirectUrl = `${baseUrl}?${params.toString()}`;
-
-      // 5. Redirection
-      window.location.href = redirectUrl;
+      // 5. Stocker l'URL du PDF et passer à l'étape 4
+      setPdfBlobUrl(blobUrl);
+      setIsSubmitting(false);
+      setStep(4);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
 
     } catch (error) {
       console.error('Erreur lors de la soumission:', error);
@@ -813,14 +779,15 @@ export default function DentalOrderForm() {
           </div>
           <div className="flex items-center gap-3">
             <div className="flex gap-1">
-              {[1, 2, 3].map(n => (
+              {[1, 2, 3, 4].map(n => (
                 <div
                   key={n}
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
-                    ${step >= n ? 'text-white' : 'bg-slate-200 text-slate-500'}`}
-                  style={{ backgroundColor: step >= n ? PRIMARY_COLOR : undefined }}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+                    ${step >= n ? 'text-white' : 'bg-slate-200 text-slate-500'}
+                    ${step === 4 && n === 4 ? 'bg-green-500' : ''}`}
+                  style={{ backgroundColor: step >= n && !(step === 4 && n === 4) ? PRIMARY_COLOR : undefined }}
                 >
-                  {step > n ? '✓' : n}
+                  {step > n ? '✓' : n === 4 ? '✓' : n}
                 </div>
               ))}
             </div>
@@ -1136,6 +1103,97 @@ export default function DentalOrderForm() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============ ÉTAPE 4 : CONFIRMATION ============ */}
+        {step === 4 && pdfBlobUrl && (
+          <div className="space-y-4">
+            <div className="text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-3">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-slate-800">Commande envoyée avec succès !</h2>
+              <p className="text-slate-500 text-sm mt-1">
+                N° Commande : <span className="font-mono font-bold" style={{ color: PRIMARY_COLOR }}>{formData.idCommande || 'N/A'}</span>
+              </p>
+            </div>
+
+            {/* Boutons d'action */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  // Ouvrir le PDF dans une nouvelle fenêtre pour impression
+                  const printWindow = window.open(pdfBlobUrl, '_blank');
+                  if (printWindow) {
+                    printWindow.onload = () => {
+                      // Afficher une alerte pour rappeler les 2 exemplaires
+                      setTimeout(() => {
+                        alert('📋 Pensez à imprimer 2 exemplaires :\n• 1 pour le laboratoire\n• 1 pour le dossier patient');
+                        printWindow.print();
+                      }, 500);
+                    };
+                  }
+                }}
+                className="px-6 py-3 text-white font-bold rounded-lg flex items-center justify-center gap-2"
+                style={{ backgroundColor: PRIMARY_COLOR }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Imprimer le bon (2 exemplaires)
+              </button>
+              <a
+                href={pdfBlobUrl}
+                download={`bon-commande-${formData.idCommande || 'xlab'}.pdf`}
+                className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-lg flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Télécharger le PDF
+              </a>
+            </div>
+
+            {/* Rappel 2 exemplaires */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+              <p className="text-sm text-amber-800">
+                <strong>📋 Rappel :</strong> Imprimez <strong>2 exemplaires</strong> du bon de commande
+              </p>
+              <p className="text-xs text-amber-600 mt-1">1 pour le laboratoire • 1 pour le dossier patient</p>
+            </div>
+
+            {/* Viewer PDF */}
+            <div className="bg-white rounded-xl border-2 overflow-hidden" style={{ borderColor: PRIMARY_COLOR }}>
+              <div className="p-2 text-center text-sm font-medium" style={{ backgroundColor: `${PRIMARY_COLOR}10`, color: PRIMARY_COLOR }}>
+                Aperçu du bon de commande
+              </div>
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full"
+                style={{ height: '600px' }}
+                title="Bon de commande PDF"
+              />
+            </div>
+
+            {/* Nouvelle commande */}
+            <div className="text-center pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  // Libérer l'URL blob
+                  if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                  // Réinitialiser le formulaire
+                  window.location.reload();
+                }}
+                className="px-6 py-2 text-slate-600 font-medium rounded-lg border-2 border-slate-300 hover:bg-slate-50"
+              >
+                + Nouvelle commande
+              </button>
             </div>
           </div>
         )}

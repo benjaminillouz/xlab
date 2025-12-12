@@ -90,6 +90,8 @@ const PRODUCTS_CATALOG = {
     { code: "PA34", nom: "Rebasage Mandibulaire", arcade: "mandibulaire", dents: false, teinte: false },
     { code: "PA17", nom: "Adjonction/Réparation Maxillaire", arcade: "maxillaire", dents: false, teinte: false },
     { code: "PA35", nom: "Adjonction/Réparation Mandibulaire", arcade: "mandibulaire", dents: false, teinte: false },
+    { code: "PA42", nom: "Appareil Valplast Haut", arcade: "maxillaire", dents: true, teinte: true },
+    { code: "PA43", nom: "Appareil Valplast Bas", arcade: "mandibulaire", dents: true, teinte: true },
   ],
   IMPLANTOLOGIE: [
     { code: "IMP2", nom: "Couronne Céramo Métallique Transvissée", dents: true, teinte: true },
